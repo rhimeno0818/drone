@@ -7,45 +7,34 @@
     <style>
         /* 画面全体のスタイル設定 */
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body, html { width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: sans-serif; }
 
         /* ARカメラ・コンテナ */
-        #ar-container { position: relative; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+        #ar-container { position: relative; width: 100%; height: 100%; }
 
         /* 背面：スマホの生カメラ映像 */
-        #camera-video { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; z-index: 1; }
-
-        /* 前面：1,000機ドローン・フォトフレーム（重ね合わせ） */
-        #frame-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none;
-            /* 背景グラデーション（中央を縦楕円でくり抜くマスク処理） */
-            background: radial-gradient(ellipse 35% 45% at 50% 50%, rgba(0,0,0,0) 70%, rgba(2, 6, 23, 0.75) 100%),
-                        linear-gradient(180deg, rgba(2,6,23,0.6) 0%, rgba(2,6,23,0) 20%, rgba(2,6,23,0) 80%, rgba(2,6,23,0.6) 100%);
+        #camera-video {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover; /* 画面いっぱいに比率を保って拡大 */
+            z-index: 1;
         }
 
-        /* フレーム内の装飾：上部社章 */
-        .logo-area { position: absolute; top: 8%; left: 0; width: 100%; text-align: center; color: #ff0000; text-shadow: 0 0 10px rgba(255,0,0,0.8); }
-        .logo-mark { font-size: 28px; font-weight: bold; line-height: 1; }
-        .logo-text { font-size: 22px; font-weight: bold; }
-        .logo-sub { color: #94a3b8; font-size: 10px; letter-spacing: 2px; margin-top: 4px; text-shadow: none; }
-
-        /* フレーム内の装飾：下部公式タイトル */
-        .title-area { position: absolute; bottom: 12%; left: 0; width: 100%; text-align: center; color: #fff; text-shadow: 0 0 8px rgba(56, 189, 248, 0.8); }
-        .main-title { font-size: 20px; font-weight: bold; letter-spacing: 1px; }
-        .sub-title { color: #38bdf8; font-size: 9px; font-weight: bold; letter-spacing: 1px; margin-top: 3px; text-shadow: none; }
-
-        /* 中央のくり抜き境界線を光らせる映えネオンライン */
-        .neon-ellipse {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 70vw; height: 90vw; max-width: 350px; max-height: 450px;
-            border: 2px solid rgba(255, 255, 255, 0.4); border-radius: 50%;
-            box-shadow: 0 0 15px rgba(255, 255, 255, 0.2), inset 0 0 15px rgba(255, 255, 255, 0.2);
+        /* 前面：透過処理済みのフォトフレーム画像 */
+        #frame-image {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover; /* カメラ映像と同じく画面いっぱいに配置 */
+            z-index: 2;
+            pointer-events: none; /* タップの邪魔にならないようにする */
         }
 
         /* 撮影用 UIボタンコントロール（最前面） */
-        .ui-layer { position: absolute; bottom: 3%; left: 0; width: 100%; display: flex; justify-content: center; align-items: center; z-index: 10; }
+        .ui-layer {
+            position: absolute; bottom: 5%; left: 0; width: 100%;
+            display: flex; justify-content: center; align-items: center; z-index: 10;
+        }
         #shutter-btn {
-            width: 70px; height: 70px; background-color: #fff; border: 5px solid rgba(255,255,255,0.4); border-radius: 50%;
+            width: 70px; height: 70px; background-color: #fff;
+            border: 5px solid rgba(255,255,255,0.4); border-radius: 50%;
             cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transition: transform 0.1s ease;
         }
         #shutter-btn:active { transform: scale(0.9); background-color: #cbd5e1; }
@@ -59,20 +48,7 @@
     <div id="ar-container">
         <video id="camera-video" autoplay playsinline muted></video>
 
-        <div id="frame-overlay">
-            <div class="neon-ellipse"></div>
-
-            <div class="logo-area">
-                <div class="logo-mark">▲</div>
-                <div class="logo-text">種</div>
-                <div class="logo-sub">YAMATANE 100th</div>
-            </div>
-
-            <div class="title-area">
-                <div class="main-title">この街と 次の100年へ</div>
-                <div class="sub-title">100th Anniversary Drone Show</div>
-            </div>
-        </div>
+        <img id="frame-image" src="frame_transparent.png" alt="100周年フォトフレーム" crossorigin="anonymous">
 
         <div class="ui-layer">
             <button id="shutter-btn" title="写真を撮影"></button>
@@ -83,19 +59,20 @@
 
     <script>
         const video = document.getElementById('camera-video');
+        const frameImage = document.getElementById('frame-image');
         const shutterBtn = document.getElementById('shutter-btn');
         const canvas = document.getElementById('hidden-canvas');
 
-        // スマホの背面カメラ（インカメラにする場合は user ）を起動
+        // スマホの背面カメラを起動
         async function startCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: { exact: "environment" } }, // 背面カメラを優先
+                    video: { facingMode: { exact: "environment" } },
                     audio: false
                 });
                 video.srcObject = stream;
             } catch (err) {
-                // PCや背面カメラがない場合は通常のカメラで代用
+                // 背面カメラがない場合（PC等）は通常のカメラで代用
                 try {
                     const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                     video.srcObject = fallbackStream;
@@ -105,53 +82,51 @@
             }
         }
 
+        // object-fit: cover と同じトリミング計算を行ってCanvasに描画する関数
+        function drawCover(ctx, source, isVideo, canvasWidth, canvasHeight) {
+            const srcWidth = isVideo ? source.videoWidth : source.naturalWidth;
+            const srcHeight = isVideo ? source.videoHeight : source.naturalHeight;
+            const imgRatio = srcWidth / srcHeight;
+            const canvasRatio = canvasWidth / canvasHeight;
+            let sx, sy, sw, sh;
+
+            if (imgRatio > canvasRatio) {
+                sh = srcHeight;
+                sw = sh * canvasRatio;
+                sx = (srcWidth - sw) / 2;
+                sy = 0;
+            } else {
+                sw = srcWidth;
+                sh = sw / canvasRatio;
+                sx = 0;
+                sy = (srcHeight - sh) / 2;
+            }
+            ctx.drawImage(source, sx, sy, sw, sh, 0, 0, canvasWidth, canvasHeight);
+        }
+
         // シャッターボタンを押した時の「写真合成・ダウンロード」処理
         shutterBtn.addEventListener('click', () => {
             const ctx = canvas.getContext('2d');
             
-            // キャンバスサイズを現在の画面（ビデオ）サイズに合わせる
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
+            // キャンバスサイズを現在の画面の見た目（スマホ画面）に合わせる
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
 
-            // 1. 生のカメラ映像をキャンバスに描画
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            // 1. 生のカメラ映像を画面いっぱいに描画（トリミング補正）
+            drawCover(ctx, video, true, canvas.width, canvas.height);
 
-            // 2. カメラ映像の上に、現在のドローンフレームのデザインをJavaScriptで動的合成
-            // 上下、タイトル、ネオンラインの描画処理
-            const scale = canvas.height / window.innerHeight;
-            
-            // マスクと暗がり表現
-            ctx.fillStyle = "rgba(2, 6, 23, 0.4)";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // テキスト合成（上部社章）
-            ctx.fillStyle = "#ff0000";
-            ctx.font = `bold ${Math.round(40 * scale)}px sans-serif`;
-            ctx.textAlign = "center";
-            ctx.fillText("▲", canvas.width / 2, canvas.height * 0.12);
-            ctx.font = `bold ${Math.round(32 * scale)}px sans-serif`;
-            ctx.fillText("種", canvas.width / 2, canvas.height * 0.17);
-            ctx.fillStyle = "#94a3b8";
-            ctx.font = `bold ${Math.round(14 * scale)}px sans-serif`;
-            ctx.fillText("YAMATANE 100th", canvas.width / 2, canvas.height * 0.21);
-
-            // テキスト合成（下部公式タイトル）
-            ctx.fillStyle = "#ffffff";
-            ctx.font = `bold ${Math.round(26 * scale)}px sans-serif`;
-            ctx.fillText("この街と 次の100年へ", canvas.width / 2, canvas.height * 0.85);
-            ctx.fillStyle = "#38bdf8";
-            ctx.font = `bold ${Math.round(12 * scale)}px sans-serif`;
-            ctx.fillText("100th Anniversary Drone Show", canvas.width / 2, canvas.height * 0.88);
+            // 2. 透過フレーム画像をその上に描画（トリミング補正）
+            drawCover(ctx, frameImage, false, canvas.width, canvas.height);
 
             // 3. 自動で画像ファイル(.png)としてスマホにダウンロード保存
             const dataURL = canvas.toDataURL('image/png');
             const link = document.createElement('a');
-            link.download = `yamatane_100th_AR_${Date.now()}.png`;
+            link.download = `yamatane_100th_photo_${Date.now()}.png`;
             link.href = dataURL;
             link.click();
         });
 
-        // アプリ起動時に自動でカメラをスタート
+        // アプリ起動時にカメラをスタート
         window.addEventListener('DOMContentLoaded', startCamera);
     </script>
 </body>
