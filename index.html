@@ -2,8 +2,8 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>ヤマタネ100周年 創業記念日ドローンショー Web ARカメラ</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>ヤマタネ100周年 ドローンショー Web ARカメラ</title>
     <style>
         /* 画面全体のスタイル設定 */
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -48,7 +48,7 @@
     <div id="ar-container">
         <video id="camera-video" autoplay playsinline muted></video>
 
-        <img id="frame-image" src="frame_transparent.png" alt="100周年フォトフレーム" crossorigin="anonymous">
+        <img id="frame-image" src="./frame_transparent.png" alt="100周年フォトフレーム" crossorigin="anonymous" onerror="alert('【エラー】フレーム画像が読み込めません。GitHub上の画像ファイル名が「frame_transparent.png」と完全に一致しているか確認してください。');">
 
         <div class="ui-layer">
             <button id="shutter-btn" title="写真を撮影"></button>
@@ -106,6 +106,12 @@
 
         // シャッターボタンを押した時の「写真合成・ダウンロード」処理
         shutterBtn.addEventListener('click', () => {
+            // 画像が読み込めていない場合は撮影をストップ
+            if (!frameImage.complete || frameImage.naturalWidth === 0) {
+                alert("フレーム画像が正しく読み込まれていないため、撮影できません。");
+                return;
+            }
+
             const ctx = canvas.getContext('2d');
             
             // キャンバスサイズを現在の画面の見た目（スマホ画面）に合わせる
