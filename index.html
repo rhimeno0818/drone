@@ -17,16 +17,16 @@
             object-fit: cover; z-index: 1;
         }
 
-        /* 前面：フォトフレーム画像 */
+        /* 前面：フォトフレーム画像（画面の見た目用） */
         #frame-image {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             object-fit: cover; z-index: 2; pointer-events: none;
-            /* ★超重要：プログラムで画像を強制的に楕円にくり抜く魔法のコード */
+            /* 画面上の見た目を強制的にくり抜く */
             -webkit-mask-image: radial-gradient(ellipse 42% 32% at 50% 50%, transparent 95%, black 100%);
             mask-image: radial-gradient(ellipse 42% 32% at 50% 50%, transparent 95%, black 100%);
         }
 
-        /* 撮影用 UIボタンコントロール（最前面） */
+        /* 撮影用 UIボタンコントロール */
         .ui-layer {
             position: absolute; bottom: 5%; left: 0; width: 100%;
             display: flex; justify-content: center; align-items: center; z-index: 10;
@@ -47,7 +47,7 @@
     <div id="ar-container">
         <video id="camera-video" autoplay playsinline muted></video>
 
-        <img id="frame-image" src="./frame_transparent.png" alt="100周年フォトフレーム" crossorigin="anonymous">
+        <img id="frame-image" src="./frame_transparent.png" alt="100周年フォトフレーム">
 
         <div class="ui-layer">
             <button id="shutter-btn" title="写真を撮影"></button>
@@ -101,44 +101,52 @@
             ctx.drawImage(source, sx, sy, sw, sh, 0, 0, canvasWidth, canvasHeight);
         }
 
-        // シャッターボタンを押した時の処理
+        // シャッターボタンを押した時の「確実な合成」処理
         shutterBtn.addEventListener('click', () => {
-            if (!frameImage.complete || frameImage.naturalWidth === 0) return;
+            if (!frameImage.complete || frameImage.naturalWidth === 0) {
+                alert("画像が準備中です。少し待ってから再度お試しください。");
+                return;
+            }
+
             const ctx = canvas.getContext('2d');
-            
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
 
-            // ★合成の順番を変更（フレームを描いてから、穴を開け、後ろにカメラを敷く）
-            
-            // 1. フレーム画像を先に描画
-            ctx.globalCompositeOperation = 'source-over';
-            drawCover(ctx, frameImage, false, canvas.width, canvas.height);
+            // ★修正：どのスマホでも確実に動く「型抜き（クリッピング）」方式に変更
 
-            // 2. 中央の楕円部分を「消しゴム」で強制的にくり抜く
-            ctx.globalCompositeOperation = 'destination-out';
-            ctx.beginPath();
-            ctx.ellipse(canvas.width / 2, canvas.height / 2, canvas.width * 0.42, canvas.height * 0.32, 0, 0, 2 * Math.PI);
-            ctx.fill();
-
-            // 3. くり抜いた穴の「後ろ」にカメラ映像を描画
-            ctx.globalCompositeOperation = 'destination-over';
+            // 1. まずカメラ映像をCanvas全体に描画（下敷きにする）
             drawCover(ctx, video, true, canvas.width, canvas.height);
 
-            // ダウンロード処理
+            // 2. フレームを描くための「型紙（クリッピングマスク）」を作る
+            ctx.save(); // 現在の状態を保存
+            ctx.beginPath();
+            
+            // 画面全体を覆う四角形
+            ctx.rect(0, 0, canvas.width, canvas.height);
+            // くり抜きたい中央の楕円形を指定
+            ctx.ellipse(canvas.width / 2, canvas.height / 2, canvas.width * 0.42, canvas.height * 0.32, 0, 0, 2 * Math.PI);
+            
+            // 「evenodd」というルールを使って、楕円の【外側だけ】を描画可能なエリアに設定
+            ctx.clip('evenodd');
+
+            // 3. 型紙の上からフレーム画像を描画（楕円の中には色が塗られず、カメラ映像が残る）
+            drawCover(ctx, frameImage, false, canvas.width, canvas.height);
+
+            // 型紙を外す
+            ctx.restore();
+
+            // 4. ダウンロード処理
             const dataURL = canvas.toDataURL('image/png');
             const link = document.createElement('a');
             link.download = `yamatane_100th_photo_${Date.now()}.png`;
             link.href = dataURL;
             link.click();
-            
-            // モードを元に戻す
-            ctx.globalCompositeOperation = 'source-over';
         });
 
         window.addEventListener('DOMContentLoaded', startCamera);
     </script>
 </body>
+</html>
 </html>
 </body>
 </html>
