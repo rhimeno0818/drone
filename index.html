@@ -9,22 +9,21 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body, html { width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: sans-serif; }
 
-        /* ARカメラ・コンテナ */
         #ar-container { position: relative; width: 100%; height: 100%; }
 
         /* 背面：スマホの生カメラ映像 */
         #camera-video {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            object-fit: cover; /* 画面いっぱいに比率を保って拡大 */
-            z-index: 1;
+            object-fit: cover; z-index: 1;
         }
 
-        /* 前面：透過処理済みのフォトフレーム画像 */
+        /* 前面：フォトフレーム画像 */
         #frame-image {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            object-fit: cover; /* カメラ映像と同じく画面いっぱいに配置 */
-            z-index: 2;
-            pointer-events: none; /* タップの邪魔にならないようにする */
+            object-fit: cover; z-index: 2; pointer-events: none;
+            /* ★超重要：プログラムで画像を強制的に楕円にくり抜く魔法のコード */
+            -webkit-mask-image: radial-gradient(ellipse 42% 32% at 50% 50%, transparent 95%, black 100%);
+            mask-image: radial-gradient(ellipse 42% 32% at 50% 50%, transparent 95%, black 100%);
         }
 
         /* 撮影用 UIボタンコントロール（最前面） */
@@ -48,7 +47,7 @@
     <div id="ar-container">
         <video id="camera-video" autoplay playsinline muted></video>
 
-        <img id="frame-image" src="./frame_transparent.png" alt="100周年フォトフレーム" crossorigin="anonymous" onerror="alert('【エラー】フレーム画像が読み込めません。GitHub上の画像ファイル名が「frame_transparent.png」と完全に一致しているか確認してください。');">
+        <img id="frame-image" src="./frame_transparent.png" alt="100周年フォトフレーム" crossorigin="anonymous">
 
         <div class="ui-layer">
             <button id="shutter-btn" title="写真を撮影"></button>
@@ -72,17 +71,15 @@
                 });
                 video.srcObject = stream;
             } catch (err) {
-                // 背面カメラがない場合（PC等）は通常のカメラで代用
                 try {
                     const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                     video.srcObject = fallbackStream;
                 } catch (fallbackErr) {
-                    alert("カメラの起動に失敗しました。ブラウザのカメラ権限を許可してください。");
+                    alert("カメラが起動できません。");
                 }
             }
         }
 
-        // object-fit: cover と同じトリミング計算を行ってCanvasに描画する関数
         function drawCover(ctx, source, isVideo, canvasWidth, canvasHeight) {
             const srcWidth = isVideo ? source.videoWidth : source.naturalWidth;
             const srcHeight = isVideo ? source.videoHeight : source.naturalHeight;
@@ -104,36 +101,44 @@
             ctx.drawImage(source, sx, sy, sw, sh, 0, 0, canvasWidth, canvasHeight);
         }
 
-        // シャッターボタンを押した時の「写真合成・ダウンロード」処理
+        // シャッターボタンを押した時の処理
         shutterBtn.addEventListener('click', () => {
-            // 画像が読み込めていない場合は撮影をストップ
-            if (!frameImage.complete || frameImage.naturalWidth === 0) {
-                alert("フレーム画像が正しく読み込まれていないため、撮影できません。");
-                return;
-            }
-
+            if (!frameImage.complete || frameImage.naturalWidth === 0) return;
             const ctx = canvas.getContext('2d');
             
-            // キャンバスサイズを現在の画面の見た目（スマホ画面）に合わせる
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
 
-            // 1. 生のカメラ映像を画面いっぱいに描画（トリミング補正）
-            drawCover(ctx, video, true, canvas.width, canvas.height);
-
-            // 2. 透過フレーム画像をその上に描画（トリミング補正）
+            // ★合成の順番を変更（フレームを描いてから、穴を開け、後ろにカメラを敷く）
+            
+            // 1. フレーム画像を先に描画
+            ctx.globalCompositeOperation = 'source-over';
             drawCover(ctx, frameImage, false, canvas.width, canvas.height);
 
-            // 3. 自動で画像ファイル(.png)としてスマホにダウンロード保存
+            // 2. 中央の楕円部分を「消しゴム」で強制的にくり抜く
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.beginPath();
+            ctx.ellipse(canvas.width / 2, canvas.height / 2, canvas.width * 0.42, canvas.height * 0.32, 0, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // 3. くり抜いた穴の「後ろ」にカメラ映像を描画
+            ctx.globalCompositeOperation = 'destination-over';
+            drawCover(ctx, video, true, canvas.width, canvas.height);
+
+            // ダウンロード処理
             const dataURL = canvas.toDataURL('image/png');
             const link = document.createElement('a');
             link.download = `yamatane_100th_photo_${Date.now()}.png`;
             link.href = dataURL;
             link.click();
+            
+            // モードを元に戻す
+            ctx.globalCompositeOperation = 'source-over';
         });
 
-        // アプリ起動時にカメラをスタート
         window.addEventListener('DOMContentLoaded', startCamera);
     </script>
+</body>
+</html>
 </body>
 </html>
