@@ -21,9 +21,7 @@
         #frame-image {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             object-fit: cover; z-index: 2; pointer-events: none;
-            /* 画面上の見た目を強制的にくり抜く */
-            -webkit-mask-image: radial-gradient(ellipse 42% 32% at 50% 50%, transparent 95%, black 100%);
-            mask-image: radial-gradient(ellipse 42% 32% at 50% 50%, transparent 95%, black 100%);
+            /* ※JavaScriptでスマホの向きに合わせて自動的にくり抜きサイズを書き換えます */
         }
 
         /* 撮影用 UIボタンコントロール */
@@ -47,7 +45,7 @@
     <div id="ar-container">
         <video id="camera-video" autoplay playsinline muted></video>
 
-        <img id="frame-image" src="./frame_transparent.png" alt="100周年フォトフレーム">
+        <img id="frame-image" src="./frame_portrait.png" alt="100周年フォトフレーム">
 
         <div class="ui-layer">
             <button id="shutter-btn" title="写真を撮影"></button>
@@ -57,10 +55,25 @@
     <canvas id="hidden-canvas"></canvas>
 
     <script>
+        // ======= 【設定エリア】 =======
+        // 画像のファイル名設定
+        const SRC_PORTRAIT = "./frame_portrait.png";
+        const SRC_LANDSCAPE = "./frame_landscape.png";
+
+        // くり抜く楕円のサイズ設定（画面幅・高さに対する割合）
+        // ※もし実際の画像の透明部分とズレる場合は、ここの数値を微調整してください。
+        const MASK_PORTRAIT_RX = 42; // 縦向き時の 横幅の割合 (42%)
+        const MASK_PORTRAIT_RY = 32; // 縦向き時の 縦幅の割合 (32%)
+        const MASK_LANDSCAPE_RX = 46; // 横向き時の 横幅の割合 (46%)
+        const MASK_LANDSCAPE_RY = 35; // 横向き時の 縦幅の割合 (35%)
+        // ==============================
+
         const video = document.getElementById('camera-video');
         const frameImage = document.getElementById('frame-image');
         const shutterBtn = document.getElementById('shutter-btn');
         const canvas = document.getElementById('hidden-canvas');
+        
+        let isLandscape = false;
 
         // スマホの背面カメラを起動
         async function startCamera() {
@@ -75,11 +88,36 @@
                     const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                     video.srcObject = fallbackStream;
                 } catch (fallbackErr) {
-                    alert("カメラが起動できません。");
+                    alert("カメラが起動できません。設定をご確認ください。");
                 }
             }
         }
 
+        // スマホの傾き（縦横）を検知して画像を切り替える関数
+        function updateOrientation() {
+            // 画面の幅と高さを比較して縦横を判定
+            isLandscape = window.innerWidth > window.innerHeight;
+
+            if (isLandscape) {
+                // 横向きの設定
+                frameImage.src = SRC_LANDSCAPE;
+                const maskStyle = `radial-gradient(ellipse ${MASK_LANDSCAPE_RX}% ${MASK_LANDSCAPE_RY}% at 50% 50%, transparent 95%, black 100%)`;
+                frameImage.style.webkitMaskImage = maskStyle;
+                frameImage.style.maskImage = maskStyle;
+            } else {
+                // 縦向きの設定
+                frameImage.src = SRC_PORTRAIT;
+                const maskStyle = `radial-gradient(ellipse ${MASK_PORTRAIT_RX}% ${MASK_PORTRAIT_RY}% at 50% 50%, transparent 95%, black 100%)`;
+                frameImage.style.webkitMaskImage = maskStyle;
+                frameImage.style.maskImage = maskStyle;
+            }
+        }
+
+        // 画面サイズ（向き）が変わるたびに実行するイベントリスナー
+        window.addEventListener('resize', updateOrientation);
+        window.addEventListener('orientationchange', () => setTimeout(updateOrientation, 100));
+
+        // 画像のトリミング計算（画面いっぱいに表示するため）
         function drawCover(ctx, source, isVideo, canvasWidth, canvasHeight) {
             const srcWidth = isVideo ? source.videoWidth : source.naturalWidth;
             const srcHeight = isVideo ? source.videoHeight : source.naturalHeight;
@@ -101,10 +139,10 @@
             ctx.drawImage(source, sx, sy, sw, sh, 0, 0, canvasWidth, canvasHeight);
         }
 
-        // シャッターボタンを押した時の「確実な合成」処理
+        // シャッターボタンを押した時の処理
         shutterBtn.addEventListener('click', () => {
             if (!frameImage.complete || frameImage.naturalWidth === 0) {
-                alert("画像が準備中です。少し待ってから再度お試しください。");
+                alert("画像の切り替え中です。少し待ってから撮影してください。");
                 return;
             }
 
@@ -112,41 +150,38 @@
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
 
-            // ★修正：どのスマホでも確実に動く「型抜き（クリッピング）」方式に変更
-
-            // 1. まずカメラ映像をCanvas全体に描画（下敷きにする）
+            // 1. まずカメラ映像をCanvas全体に描画（下敷き）
             drawCover(ctx, video, true, canvas.width, canvas.height);
 
             // 2. フレームを描くための「型紙（クリッピングマスク）」を作る
-            ctx.save(); // 現在の状態を保存
+            ctx.save();
             ctx.beginPath();
-            
-            // 画面全体を覆う四角形
             ctx.rect(0, 0, canvas.width, canvas.height);
-            // くり抜きたい中央の楕円形を指定
-            ctx.ellipse(canvas.width / 2, canvas.height / 2, canvas.width * 0.42, canvas.height * 0.32, 0, 0, 2 * Math.PI);
             
-            // 「evenodd」というルールを使って、楕円の【外側だけ】を描画可能なエリアに設定
+            // 縦横の向きに合わせて、型抜きのサイズを変更
+            let rx = isLandscape ? (canvas.width * (MASK_LANDSCAPE_RX / 100)) : (canvas.width * (MASK_PORTRAIT_RX / 100));
+            let ry = isLandscape ? (canvas.height * (MASK_LANDSCAPE_RY / 100)) : (canvas.height * (MASK_PORTRAIT_RY / 100));
+            
+            ctx.ellipse(canvas.width / 2, canvas.height / 2, rx, ry, 0, 0, 2 * Math.PI);
             ctx.clip('evenodd');
 
-            // 3. 型紙の上からフレーム画像を描画（楕円の中には色が塗られず、カメラ映像が残る）
+            // 3. 型紙の上からフレーム画像を描画
             drawCover(ctx, frameImage, false, canvas.width, canvas.height);
-
-            // 型紙を外す
             ctx.restore();
 
             // 4. ダウンロード処理
             const dataURL = canvas.toDataURL('image/png');
             const link = document.createElement('a');
-            link.download = `yamatane_100th_photo_${Date.now()}.png`;
+            link.download = `yamatane_100th_${isLandscape ? 'landscape' : 'portrait'}_${Date.now()}.png`;
             link.href = dataURL;
             link.click();
         });
 
-        window.addEventListener('DOMContentLoaded', startCamera);
+        // アプリ起動時の初期設定
+        window.addEventListener('DOMContentLoaded', () => {
+            updateOrientation(); // 起動時の縦横チェック
+            startCamera();       // カメラ起動
+        });
     </script>
-</body>
-</html>
-</html>
 </body>
 </html>
