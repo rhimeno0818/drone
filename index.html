@@ -45,7 +45,7 @@
     <div id="ar-container">
         <video id="camera-video" autoplay playsinline muted></video>
 
-        <img id="frame-image" src="./frame_portrait.png" alt="100周年フォトフレーム">
+        <img id="frame-image" src="" alt="100周年フォトフレーム">
 
         <div class="ui-layer">
             <button id="shutter-btn" title="写真を撮影"></button>
@@ -56,16 +56,15 @@
 
     <script>
         // ======= 【設定エリア】 =======
-        // 画像のファイル名設定
-        const SRC_PORTRAIT = "./frame_portrait.png";
-        const SRC_LANDSCAPE = "./frame_landscape.png";
+        // 画像のファイル名設定（※GitHubにアップしたファイル名と完全に一致させてください）
+        const SRC_PORTRAIT = "frame_portrait.png";   // 縦向き用の画像
+        const SRC_LANDSCAPE = "frame_landscape.png"; // 横向き用の画像
 
-        // くり抜く楕円のサイズ設定（画面幅・高さに対する割合）
-        // ※もし実際の画像の透明部分とズレる場合は、ここの数値を微調整してください。
-        const MASK_PORTRAIT_RX = 42; // 縦向き時の 横幅の割合 (42%)
-        const MASK_PORTRAIT_RY = 32; // 縦向き時の 縦幅の割合 (32%)
-        const MASK_LANDSCAPE_RX = 46; // 横向き時の 横幅の割合 (46%)
-        const MASK_LANDSCAPE_RY = 35; // 横向き時の 縦幅の割合 (35%)
+        // くり抜く楕円のサイズ設定（画面幅・高さに対する割合 %）
+        const MASK_PORTRAIT_RX = 42;  // 縦向き時の 横幅の割合
+        const MASK_PORTRAIT_RY = 32;  // 縦向き時の 縦幅の割合
+        const MASK_LANDSCAPE_RX = 46; // 横向き時の 横幅の割合
+        const MASK_LANDSCAPE_RY = 35; // 横向き時の 縦幅の割合
         // ==============================
 
         const video = document.getElementById('camera-video');
@@ -85,10 +84,11 @@
                 video.srcObject = stream;
             } catch (err) {
                 try {
+                    // 背面カメラがダメなら標準カメラを試す
                     const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                     video.srcObject = fallbackStream;
                 } catch (fallbackErr) {
-                    alert("カメラが起動できません。設定をご確認ください。");
+                    alert("カメラが起動できません。ブラウザのカメラ権限が許可されているかご確認ください。");
                 }
             }
         }
@@ -99,13 +99,13 @@
             isLandscape = window.innerWidth > window.innerHeight;
 
             if (isLandscape) {
-                // 横向きの設定
+                // 【横向き】の設定
                 frameImage.src = SRC_LANDSCAPE;
                 const maskStyle = `radial-gradient(ellipse ${MASK_LANDSCAPE_RX}% ${MASK_LANDSCAPE_RY}% at 50% 50%, transparent 95%, black 100%)`;
                 frameImage.style.webkitMaskImage = maskStyle;
                 frameImage.style.maskImage = maskStyle;
             } else {
-                // 縦向きの設定
+                // 【縦向き】の設定
                 frameImage.src = SRC_PORTRAIT;
                 const maskStyle = `radial-gradient(ellipse ${MASK_PORTRAIT_RX}% ${MASK_PORTRAIT_RY}% at 50% 50%, transparent 95%, black 100%)`;
                 frameImage.style.webkitMaskImage = maskStyle;
@@ -113,9 +113,12 @@
             }
         }
 
-        // 画面サイズ（向き）が変わるたびに実行するイベントリスナー
+        // ★スマホを傾けたときのラグ対策
         window.addEventListener('resize', updateOrientation);
-        window.addEventListener('orientationchange', () => setTimeout(updateOrientation, 100));
+        window.addEventListener('orientationchange', () => {
+            // 回転直後は画面サイズの再計算が間に合わないことがあるため、0.3秒待ってから実行
+            setTimeout(updateOrientation, 300);
+        });
 
         // 画像のトリミング計算（画面いっぱいに表示するため）
         function drawCover(ctx, source, isVideo, canvasWidth, canvasHeight) {
@@ -139,10 +142,10 @@
             ctx.drawImage(source, sx, sy, sw, sh, 0, 0, canvasWidth, canvasHeight);
         }
 
-        // シャッターボタンを押した時の処理
+        // シャッターボタンを押した時の「合成・保存」処理
         shutterBtn.addEventListener('click', () => {
             if (!frameImage.complete || frameImage.naturalWidth === 0) {
-                alert("画像の切り替え中です。少し待ってから撮影してください。");
+                alert("画像の読み込み中です。少し待ってから撮影してください。");
                 return;
             }
 
@@ -179,7 +182,7 @@
 
         // アプリ起動時の初期設定
         window.addEventListener('DOMContentLoaded', () => {
-            updateOrientation(); // 起動時の縦横チェック
+            updateOrientation(); // 起動時の縦横チェックと画像セット
             startCamera();       // カメラ起動
         });
     </script>
